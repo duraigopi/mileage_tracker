@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1B5E20"/>
+      <stop offset="100%" style="stop-color:#388E3C"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="512" height="512" rx="100" fill="url(#bg)"/>
+  <!-- Speedometer arc -->
+  <circle cx="256" cy="280" r="140" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="20"/>
+  <path d="M 140 340 A 140 140 0 0 1 372 340" fill="none" stroke="white" stroke-width="20" stroke-linecap="round"/>
+  <!-- Speed needle -->
+  <line x1="256" y1="280" x2="330" y2="190" stroke="white" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="256" cy="280" r="15" fill="white"/>
+  <!-- Bike icon simplified -->
+  <circle cx="170" cy="400" r="30" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="8"/>
+  <circle cx="342" cy="400" r="30" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="8"/>
+  <path d="M 170 400 L 230 360 L 290 360 L 342 400" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 230 360 L 250 330 L 300 330 L 290 360" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Text -->
+  <text x="256" y="155" text-anchor="middle" font-family="Arial,sans-serif" font-size="48" font-weight="bold" fill="white">RideLog</text>
+</svg>
