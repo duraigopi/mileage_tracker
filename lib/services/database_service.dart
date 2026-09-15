@@ -223,4 +223,39 @@ class DatabaseService {
     final db = await database;
     return await db.delete('maintenance_entries', where: 'id = ?', whereArgs: [id]);
   }
+
+  // --- Bulk operations (CSV import) ---
+
+  /// Wipes every entry. Used by a "replace all" import.
+  Future<void> deleteAllEntries() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('odometer_entries');
+      await txn.delete('fuel_entries');
+      await txn.delete('maintenance_entries');
+    });
+  }
+
+  /// Inserts a whole backup in one transaction, so a failure part-way through
+  /// cannot leave the database half-restored. Ids are dropped and reassigned.
+  Future<void> insertAll({
+    List<OdometerEntry> odometer = const [],
+    List<FuelEntry> fuel = const [],
+    List<MaintenanceEntry> maintenance = const [],
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final e in odometer) {
+        batch.insert('odometer_entries', e.toMap()..remove('id'));
+      }
+      for (final e in fuel) {
+        batch.insert('fuel_entries', e.toMap()..remove('id'));
+      }
+      for (final e in maintenance) {
+        batch.insert('maintenance_entries', e.toMap()..remove('id'));
+      }
+      await batch.commit(noResult: true);
+    });
+  }
 }

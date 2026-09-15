@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../providers/bike_provider.dart';
 import '../models/maintenance_entry.dart';
 import '../utils/app_colors.dart';
+import '../utils/entry_date.dart';
+import 'advance_entry_notice.dart';
 
 class AddMaintenanceSheet extends StatefulWidget {
   final MaintenanceEntry? entry;
@@ -24,6 +26,7 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
   late String _selectedCategory;
   String? _errorText;
   TextEditingController? _autocompleteController;
+  bool _timeEdited = false;
 
   bool get _isEditing => widget.entry != null;
 
@@ -64,6 +67,14 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
     _odometerController.dispose();
     _noteController.dispose();
     super.dispose();
+  }
+
+
+  /// Seconds the entry is stored with. A hand-picked time means the user chose
+  /// a whole minute; otherwise keep second-level precision.
+  int get _entrySecond {
+    if (_timeEdited) return 0;
+    return _isEditing ? widget.entry!.date.second : DateTime.now().second;
   }
 
   @override
@@ -132,6 +143,10 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
                 )),
               ],
             ),
+            if (isAdvanceEntryDate(_selectedDate)) ...[
+              const SizedBox(height: 12),
+              AdvanceEntryNotice(date: _selectedDate),
+            ],
             const SizedBox(height: 20),
 
             // Category
@@ -416,18 +431,18 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
   }
 
   Future<void> _pickDate() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
+    final date = await showEntryDatePicker(context, _selectedDate);
     if (date != null) setState(() => _selectedDate = date);
   }
 
   Future<void> _pickTime() async {
     final time = await showTimePicker(context: context, initialTime: _selectedTime);
-    if (time != null) setState(() => _selectedTime = time);
+    if (time != null) {
+      setState(() {
+        _selectedTime = time;
+        _timeEdited = true;
+      });
+    }
   }
 
   void _deleteEntry(BuildContext context) async {
@@ -464,12 +479,10 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
 
     setState(() => _errorText = null);
 
-    final dateTime = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
-      _selectedTime.hour,
-      _selectedTime.minute,
+    final dateTime = composeEntryDateTime(
+      date: _selectedDate,
+      time: _selectedTime,
+      second: _entrySecond,
     );
 
     final entry = MaintenanceEntry(

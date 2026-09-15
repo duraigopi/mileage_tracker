@@ -6,6 +6,7 @@ import '../models/odometer_entry.dart';
 import '../models/fuel_entry.dart';
 import '../models/maintenance_entry.dart';
 import '../utils/app_colors.dart';
+import '../utils/entry_date.dart';
 import '../widgets/scroll_animated.dart';
 import '../widgets/animated_number.dart';
 import '../widgets/add_odometer_sheet.dart';
@@ -212,10 +213,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTodaySummaryCard(BikeProvider provider) {
-    final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
+    final start = todayStart();
+    final end = tomorrowStart();
     final todayEntries = provider.odometerEntries
-        .where((e) => !e.date.isBefore(todayStart))
+        .where((e) => !e.date.isBefore(start) && e.date.isBefore(end))
         .toList();
 
     if (todayEntries.isEmpty) return const SizedBox();

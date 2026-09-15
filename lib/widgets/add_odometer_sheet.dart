@@ -5,6 +5,9 @@ import 'package:intl/intl.dart';
 import '../providers/bike_provider.dart';
 import '../models/odometer_entry.dart';
 import '../utils/app_colors.dart';
+import '../utils/entry_date.dart';
+import '../utils/note_suggestion.dart';
+import 'advance_entry_notice.dart';
 
 class AddOdometerSheet extends StatefulWidget {
   final OdometerEntry? entry;
@@ -23,6 +26,7 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
   String? _errorText;
   TextEditingController? _autocompleteController;
   final _readingFocusNode = FocusNode();
+  bool _timeEdited = false;
 
   bool get _isEditing => widget.entry != null;
 
@@ -42,35 +46,28 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
 
       final provider = context.read<BikeProvider>();
       final now = DateTime.now();
-      final todayStart = DateTime(now.year, now.month, now.day);
+      final dayStart = todayStart();
+      // Bounded by tomorrow so an advance entry isn't mistaken for today's
       final todayEntries = provider.odometerEntries
-          .where((e) => !e.date.isBefore(todayStart))
+          .where((e) => !e.date.isBefore(dayStart) && e.date.isBefore(tomorrowStart()))
           .toList()
         ..sort((a, b) => a.date.compareTo(b.date));
       final hasTodayEntry = todayEntries.isNotEmpty;
 
       // Auto-fill odometer with previous day's last reading if no entry today
-      if (!hasTodayEntry && provider.currentOdometer > 0) {
-        final lastDigits = provider.currentOdometer % 1000;
+      final baseline = provider.odometerAsOf(now);
+      if (!hasTodayEntry && baseline > 0) {
+        final lastDigits = baseline % 1000;
         _readingController.text = lastDigits.toStringAsFixed(1);
       }
 
       // Auto-fill note
-      if (!hasTodayEntry) {
-        // First ride of the day → use previous day's first entry note
-        final yesterday = todayStart.subtract(const Duration(days: 1));
-        final yesterdayEntries = provider.odometerEntries
-            .where((e) => !e.date.isBefore(yesterday) && e.date.isBefore(todayStart))
-            .toList()
-          ..sort((a, b) => a.date.compareTo(b.date));
-        if (yesterdayEntries.isNotEmpty && yesterdayEntries.first.note != null) {
-          _noteController.text = yesterdayEntries.first.note!;
-        }
-      } else if (now.hour >= 20) {
-        // After 8 PM → use today's first entry note (heading back to start)
-        if (todayEntries.first.note != null) {
-          _noteController.text = todayEntries.first.note!;
-        }
+      final suggestedNote = suggestedOdometerNote(
+        entries: provider.odometerEntries,
+        now: now,
+      );
+      if (suggestedNote != null) {
+        _noteController.text = suggestedNote;
       }
     }
 
@@ -113,6 +110,24 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
     return double.tryParse(text);
   }
 
+  /// Seconds the entry is stored with. A hand-picked time means the user chose
+  /// a whole minute; otherwise keep second-level precision.
+  int get _entrySecond {
+    if (_timeEdited) return 0;
+    return _isEditing ? widget.entry!.date.second : DateTime.now().second;
+  }
+
+  DateTime get _entryDateTime => composeEntryDateTime(
+        date: _selectedDate,
+        time: _selectedTime,
+        second: _entrySecond,
+      );
+
+  /// Reading to build on — the latest one recorded at or before the selected
+  /// date, so an advance entry doesn't skew an entry added for an earlier day.
+  double _baselineReading(BikeProvider provider) =>
+      provider.odometerAsOf(_entryDateTime);
+
   /// Calculate full reading from the entered last digits
   double? _getFullReading(BikeProvider provider) {
     final entered = _getEnteredValue();
@@ -129,7 +144,7 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
       return full;
     }
 
-    final current = provider.currentOdometer;
+    final current = _baselineReading(provider);
     if (current <= 0) return entered; // No previous reading, use as-is
 
     final prefix = (current / 1000).floor() * 1000;
@@ -151,7 +166,7 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
     if (_isEditing) {
       return (widget.entry!.reading / 1000).floor().toString();
     }
-    final current = provider.currentOdometer;
+    final current = _baselineReading(provider);
     if (current <= 0) return '';
     // Only recalculate prefix when input is complete (4+ digits or has decimal)
     if (_isInputComplete) {
@@ -170,7 +185,7 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
   @override
   Widget build(BuildContext context) {
     final provider = context.read<BikeProvider>();
-    final lastReading = provider.currentOdometer;
+    final lastReading = _baselineReading(provider);
     final fullReading = _getFullReading(provider);
 
     return Container(
@@ -239,6 +254,10 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
                 ),
               ],
             ),
+            if (isAdvanceEntryDate(_selectedDate)) ...[
+              const SizedBox(height: 12),
+              AdvanceEntryNotice(date: _selectedDate),
+            ],
             const SizedBox(height: 20),
 
             // Odometer input with auto-prefix
@@ -546,18 +565,18 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
   }
 
   Future<void> _pickDate() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
+    final date = await showEntryDatePicker(context, _selectedDate);
     if (date != null) setState(() => _selectedDate = date);
   }
 
   Future<void> _pickTime() async {
     final time = await showTimePicker(context: context, initialTime: _selectedTime);
-    if (time != null) setState(() => _selectedTime = time);
+    if (time != null) {
+      setState(() {
+        _selectedTime = time;
+        _timeEdited = true;
+      });
+    }
   }
 
   void _deleteEntry(BuildContext context) async {
@@ -593,8 +612,15 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
       return;
     }
 
-    if (!_isEditing && fullReading < provider.currentOdometer) {
-      setState(() => _errorText = 'Reading ${fullReading.toStringAsFixed(1)} must be > current (${provider.currentOdometer.toStringAsFixed(1)} km)');
+    final baseline = _baselineReading(provider);
+    if (!_isEditing && fullReading < baseline) {
+      setState(() => _errorText = 'Reading ${fullReading.toStringAsFixed(1)} must be > current (${baseline.toStringAsFixed(1)} km)');
+      return;
+    }
+
+    final nextReading = provider.odometerAfter(_entryDateTime);
+    if (!_isEditing && nextReading != null && fullReading > nextReading) {
+      setState(() => _errorText = 'A later entry already reads ${nextReading.toStringAsFixed(1)} km — this one must be lower');
       return;
     }
 
@@ -605,13 +631,7 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
 
     setState(() => _errorText = null);
 
-    final dateTime = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
-      _selectedTime.hour,
-      _selectedTime.minute,
-    );
+    final dateTime = _entryDateTime;
 
     if (_isEditing) {
       provider.updateOdometerEntry(OdometerEntry(

@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../providers/bike_provider.dart';
 import '../models/fuel_entry.dart';
 import '../utils/app_colors.dart';
+import '../utils/entry_date.dart';
+import 'advance_entry_notice.dart';
 
 class AddFuelSheet extends StatefulWidget {
   final FuelEntry? entry;
@@ -24,6 +26,7 @@ class _AddFuelSheetState extends State<AddFuelSheet> {
   late TimeOfDay _selectedTime;
   String? _errorText;
   TextEditingController? _autocompleteController;
+  bool _timeEdited = false;
 
   bool get _isEditing => widget.entry != null;
 
@@ -61,6 +64,14 @@ class _AddFuelSheetState extends State<AddFuelSheet> {
   double get _amount => double.tryParse(_amountController.text) ?? 0;
   double get _rate => double.tryParse(_rateController.text) ?? 0;
   double get _liters => _rate > 0 ? _amount / _rate : 0;
+
+
+  /// Seconds the entry is stored with. A hand-picked time means the user chose
+  /// a whole minute; otherwise keep second-level precision.
+  int get _entrySecond {
+    if (_timeEdited) return 0;
+    return _isEditing ? widget.entry!.date.second : DateTime.now().second;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -131,6 +142,10 @@ class _AddFuelSheetState extends State<AddFuelSheet> {
                 )),
               ],
             ),
+            if (isAdvanceEntryDate(_selectedDate)) ...[
+              const SizedBox(height: 12),
+              AdvanceEntryNotice(date: _selectedDate),
+            ],
             const SizedBox(height: 20),
 
             // Odometer reading (optional, auto-filled)
@@ -441,18 +456,18 @@ class _AddFuelSheetState extends State<AddFuelSheet> {
   }
 
   Future<void> _pickDate() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
+    final date = await showEntryDatePicker(context, _selectedDate);
     if (date != null) setState(() => _selectedDate = date);
   }
 
   Future<void> _pickTime() async {
     final time = await showTimePicker(context: context, initialTime: _selectedTime);
-    if (time != null) setState(() => _selectedTime = time);
+    if (time != null) {
+      setState(() {
+        _selectedTime = time;
+        _timeEdited = true;
+      });
+    }
   }
 
   void _deleteEntry(BuildContext context) async {
@@ -493,18 +508,19 @@ class _AddFuelSheetState extends State<AddFuelSheet> {
     }
 
     final provider = context.read<BikeProvider>();
-    final finalOdometer = (odometer != null && odometer > 0) ? odometer : provider.currentOdometer;
 
     setState(() => _errorText = null);
 
     final liters = amount / rate;
-    final dateTime = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
-      _selectedTime.hour,
-      _selectedTime.minute,
+    final dateTime = composeEntryDateTime(
+      date: _selectedDate,
+      time: _selectedTime,
+      second: _entrySecond,
     );
+    // Fall back to the reading as of the entry's own date, not the latest one,
+    // which may belong to an advance entry for a later day.
+    final finalOdometer =
+        (odometer != null && odometer > 0) ? odometer : provider.odometerAsOf(dateTime);
 
     final fuelEntry = FuelEntry(
       id: _isEditing ? widget.entry!.id : null,

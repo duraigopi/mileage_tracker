@@ -1,11 +1,24 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 import '../models/odometer_entry.dart';
 import '../models/fuel_entry.dart';
 import '../models/maintenance_entry.dart';
+import '../services/csv_service.dart';
 import '../services/database_service.dart';
+import '../utils/entry_date.dart';
+
+/// Outcome of a CSV import, for the confirmation snackbar.
+class ImportResult {
+  final int added;
+  final int skipped;
+  final List<String> errors;
+
+  const ImportResult({
+    required this.added,
+    this.skipped = 0,
+    this.errors = const [],
+  });
+}
 
 class BikeProvider extends ChangeNotifier {
   final DatabaseService _db = DatabaseService();
@@ -23,7 +36,7 @@ class BikeProvider extends ChangeNotifier {
 
   List<String> get odometerNoteSuggestions {
     final notes = _odometerEntries
-        .where((e) => e.note != null && e.note!.isNotEmpty && !e.note!.startsWith('Fuel stop:'))
+        .where((e) => e.note != null && e.note!.isNotEmpty)
         .map((e) => e.note!)
         .toList();
     // Deduplicate, most recent first
@@ -78,6 +91,30 @@ class BikeProvider extends ChangeNotifier {
         .reduce((a, b) => a > b ? a : b);
   }
 
+  /// Highest reading recorded at or before [dateTime].
+  ///
+  /// Used as the baseline when adding an entry, so an advance (future-dated)
+  /// entry does not become the reference point for an earlier day's entry.
+  double odometerAsOf(DateTime dateTime) {
+    final readings = _odometerEntries
+        .where((e) => !e.date.isAfter(dateTime))
+        .map((e) => e.reading);
+    if (readings.isEmpty) return 0;
+    return readings.reduce((a, b) => a > b ? a : b);
+  }
+
+  /// Lowest reading recorded after [dateTime], if any.
+  ///
+  /// A new entry must not exceed it, otherwise an already-recorded advance
+  /// entry would end up below an earlier reading.
+  double? odometerAfter(DateTime dateTime) {
+    final readings = _odometerEntries
+        .where((e) => e.date.isAfter(dateTime))
+        .map((e) => e.reading);
+    if (readings.isEmpty) return null;
+    return readings.reduce((a, b) => a < b ? a : b);
+  }
+
   double get firstOdometer {
     if (_odometerEntries.isEmpty) return 0;
     return _odometerEntries
@@ -88,10 +125,10 @@ class BikeProvider extends ChangeNotifier {
   double get totalDistance => currentOdometer - firstOdometer;
 
   double get todayDistance {
-    final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
+    final start = todayStart();
+    final end = tomorrowStart();
     final todayEntries = _odometerEntries
-        .where((e) => e.date.isAfter(todayStart.subtract(const Duration(seconds: 1))))
+        .where((e) => !e.date.isBefore(start) && e.date.isBefore(end))
         .toList();
     if (todayEntries.length < 2) return 0;
 
@@ -113,11 +150,14 @@ class BikeProvider extends ChangeNotifier {
     return _getDistanceForPeriod(monthStart, now);
   }
 
+  /// Exclusive upper bound for a range ending on [end] — midnight after that
+  /// day, so entries dated later (advance entries) stay out of the range.
+  DateTime _endBound(DateTime end) =>
+      DateTime(end.year, end.month, end.day).add(const Duration(days: 1));
+
   double _getDistanceForPeriod(DateTime start, DateTime end) {
     final periodEntries = _odometerEntries
-        .where((e) =>
-            !e.date.isBefore(start) &&
-            !e.date.isAfter(end.add(const Duration(days: 1))))
+        .where((e) => !e.date.isBefore(start) && e.date.isBefore(_endBound(end)))
         .toList();
     if (periodEntries.length < 2) {
       if (periodEntries.length == 1) {
@@ -180,25 +220,25 @@ class BikeProvider extends ChangeNotifier {
 
   double getFuelSpentForRange(DateTime start, DateTime end) {
     return _fuelEntries
-        .where((e) => !e.date.isBefore(start) && e.date.isBefore(end.add(const Duration(days: 1))))
+        .where((e) => !e.date.isBefore(start) && e.date.isBefore(_endBound(end)))
         .fold<double>(0, (s, e) => s + e.totalCost);
   }
 
   double getLitersForRange(DateTime start, DateTime end) {
     return _fuelEntries
-        .where((e) => !e.date.isBefore(start) && e.date.isBefore(end.add(const Duration(days: 1))))
+        .where((e) => !e.date.isBefore(start) && e.date.isBefore(_endBound(end)))
         .fold<double>(0, (s, e) => s + e.liters);
   }
 
   double getMaintenanceSpentForRange(DateTime start, DateTime end) {
     return _maintenanceEntries
-        .where((e) => !e.date.isBefore(start) && e.date.isBefore(end.add(const Duration(days: 1))))
+        .where((e) => !e.date.isBefore(start) && e.date.isBefore(_endBound(end)))
         .fold<double>(0, (s, e) => s + e.cost);
   }
 
   int getFuelCountForRange(DateTime start, DateTime end) {
     return _fuelEntries
-        .where((e) => !e.date.isBefore(start) && e.date.isBefore(end.add(const Duration(days: 1))))
+        .where((e) => !e.date.isBefore(start) && e.date.isBefore(_endBound(end)))
         .length;
   }
 
@@ -505,54 +545,88 @@ class BikeProvider extends ChangeNotifier {
     return totalEntries > 50 && !_hasExported;
   }
 
-  // --- CSV Export ---
+  // --- CSV Export / Import ---
 
-  Future<String> exportToCsv() async {
-    final buffer = StringBuffer();
-
-    // Odometer entries
-    buffer.writeln('=== ODOMETER READINGS ===');
-    buffer.writeln('Date,Time,Reading (km),Note');
-    final odoSorted = List<OdometerEntry>.from(_odometerEntries)
-      ..sort((a, b) => a.date.compareTo(b.date));
-    for (final e in odoSorted) {
-      buffer.writeln('${DateFormat('dd-MM-yyyy').format(e.date)},${DateFormat('HH:mm').format(e.date)},${e.reading},${e.note ?? ''}');
-    }
-
-    buffer.writeln();
-    buffer.writeln('=== FUEL ENTRIES ===');
-    buffer.writeln('Date,Odometer (km),Liters,Rate (₹/L),Amount (₹),Note');
-    final fuelSorted = List<FuelEntry>.from(_fuelEntries)
-      ..sort((a, b) => a.date.compareTo(b.date));
-    for (final e in fuelSorted) {
-      buffer.writeln('${DateFormat('dd-MM-yyyy').format(e.date)},${e.odometerReading},${e.liters.toStringAsFixed(2)},${e.pricePerLiter},${e.totalCost},${e.note ?? ''}');
-    }
-
-    buffer.writeln();
-    buffer.writeln('=== MAINTENANCE ===');
-    buffer.writeln('Date,Category,Cost (₹),Odometer (km),Note');
-    final maintSorted = List<MaintenanceEntry>.from(_maintenanceEntries)
-      ..sort((a, b) => a.date.compareTo(b.date));
-    for (final e in maintSorted) {
-      buffer.writeln('${DateFormat('dd-MM-yyyy').format(e.date)},${e.category},${e.cost},${e.odometerReading ?? ''},${e.note ?? ''}');
-    }
-
-    // Summary
-    buffer.writeln();
-    buffer.writeln('=== SUMMARY ===');
-    buffer.writeln('Total Distance,${totalDistance.toStringAsFixed(1)} km');
-    buffer.writeln('Total Fuel Spent,₹${totalFuelSpent.toStringAsFixed(2)}');
-    buffer.writeln('Total Fuel,${totalLiters.toStringAsFixed(2)} L');
-    buffer.writeln('Overall Mileage,${averageMileage?.toStringAsFixed(1) ?? 'N/A'} km/l');
-    buffer.writeln('Total Maintenance,₹${totalMaintenanceCost.toStringAsFixed(2)}');
-    buffer.writeln('Total Expenses,₹${totalExpenses.toStringAsFixed(2)}');
-
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/bike_tracker_export_${DateFormat('yyyyMMdd').format(DateTime.now())}.csv');
-    await file.writeAsString(buffer.toString());
-    _hasExported = true;
-    notifyListeners();
-    return file.path;
+  /// Builds the backup file contents. Writing is left to the caller so the
+  /// export can be saved wherever the user chooses.
+  String buildCsvContent() {
+    return buildCsv(
+      odometer: _odometerEntries,
+      fuel: _fuelEntries,
+      maintenance: _maintenanceEntries,
+      summary: {
+        'Total Distance': '${totalDistance.toStringAsFixed(1)} km',
+        'Total Fuel Spent': '₹${totalFuelSpent.toStringAsFixed(2)}',
+        'Total Fuel': '${totalLiters.toStringAsFixed(2)} L',
+        'Overall Mileage': '${averageMileage?.toStringAsFixed(1) ?? 'N/A'} km/l',
+        'Total Maintenance': '₹${totalMaintenanceCost.toStringAsFixed(2)}',
+        'Total Expenses': '₹${totalExpenses.toStringAsFixed(2)}',
+      },
+    );
   }
 
+  /// Suggested file name for an export.
+  String exportFileName() =>
+      'ridelog_backup_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.csv';
+
+  void markExported() {
+    _hasExported = true;
+    notifyListeners();
+  }
+
+  /// Restores [data] into the database.
+  ///
+  /// With [replaceExisting] every current entry is wiped first; otherwise the
+  /// import is merged and entries already present are skipped, so importing the
+  /// same file twice does not duplicate anything.
+  Future<ImportResult> importData(
+    CsvImportData data, {
+    required bool replaceExisting,
+  }) async {
+    if (replaceExisting) {
+      await _db.deleteAllEntries();
+      await _db.insertAll(
+        odometer: data.odometer,
+        fuel: data.fuel,
+        maintenance: data.maintenance,
+      );
+      await loadData();
+      return ImportResult(added: data.total, errors: data.errors);
+    }
+
+    final existingOdo = _odometerEntries.map(_odometerKey).toSet();
+    final existingFuel = _fuelEntries.map(_fuelKey).toSet();
+    final existingMaint = _maintenanceEntries.map(_maintenanceKey).toSet();
+
+    final odometer = data.odometer.where((e) => existingOdo.add(_odometerKey(e))).toList();
+    final fuel = data.fuel.where((e) => existingFuel.add(_fuelKey(e))).toList();
+    final maintenance = data.maintenance.where((e) => existingMaint.add(_maintenanceKey(e))).toList();
+
+    await _db.insertAll(odometer: odometer, fuel: fuel, maintenance: maintenance);
+    await loadData();
+
+    final added = odometer.length + fuel.length + maintenance.length;
+    return ImportResult(
+      added: added,
+      skipped: data.total - added,
+      errors: data.errors,
+    );
+  }
+
+  /// Entries are considered the same when they land on the same minute with the
+  /// same values — the CSV carries no ids to match on.
+  ///
+  /// Deliberately coarser than the stored timestamp, which keeps seconds: a
+  /// backup taken before seconds were recorded still de-duplicates against
+  /// entries that have them.
+  String _minuteKey(DateTime d) =>
+      '${d.year}-${d.month}-${d.day}-${d.hour}-${d.minute}';
+
+  String _odometerKey(OdometerEntry e) => '${_minuteKey(e.date)}|${e.reading}';
+
+  String _fuelKey(FuelEntry e) =>
+      '${_minuteKey(e.date)}|${e.totalCost}|${e.odometerReading}';
+
+  String _maintenanceKey(MaintenanceEntry e) =>
+      '${_minuteKey(e.date)}|${e.category}|${e.cost}';
 }
