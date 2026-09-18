@@ -33,7 +33,7 @@ Look for the IP after `src` (e.g., `10.11.240.24`)
 ### 4. Connect wirelessly
 
 ```powershell
-& "C:\Users\corpt\AppData\Local\Android\Sdk\platform-tools\adb.exe" connect 192.168.1.3:5555
+& "C:\Users\corpt\AppData\Local\Android\Sdk\platform-tools\adb.exe" connect 192.168.1.2:5555
 ```
 
 ### 5. Unplug USB cable
