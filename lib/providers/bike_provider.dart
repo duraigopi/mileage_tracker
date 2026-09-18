@@ -6,6 +6,7 @@ import '../models/maintenance_entry.dart';
 import '../services/csv_service.dart';
 import '../services/database_service.dart';
 import '../utils/entry_date.dart';
+import '../utils/ride_distance.dart';
 
 /// Outcome of a CSV import, for the confirmation snackbar.
 class ImportResult {
@@ -103,17 +104,13 @@ class BikeProvider extends ChangeNotifier {
     return readings.reduce((a, b) => a > b ? a : b);
   }
 
-  /// Lowest reading recorded after [dateTime], if any.
+  /// The lowest-reading entry dated after [dateTime], if any.
   ///
-  /// A new entry must not exceed it, otherwise an already-recorded advance
-  /// entry would end up below an earlier reading.
-  double? odometerAfter(DateTime dateTime) {
-    final readings = _odometerEntries
-        .where((e) => e.date.isAfter(dateTime))
-        .map((e) => e.reading);
-    if (readings.isEmpty) return null;
-    return readings.reduce((a, b) => a < b ? a : b);
-  }
+  /// A new reading above it would leave that later entry below an earlier one,
+  /// which an odometer cannot do. Usually it is an advance entry whose value
+  /// was an estimate, so this is worth flagging but not worth refusing.
+  OdometerEntry? lowestEntryAfter(DateTime dateTime) =>
+      lowestEntryAfterIn(_odometerEntries, dateTime);
 
   double get firstOdometer {
     if (_odometerEntries.isEmpty) return 0;

@@ -9,6 +9,10 @@ import '../widgets/add_odometer_sheet.dart';
 import '../widgets/add_fuel_sheet.dart';
 import '../widgets/add_maintenance_sheet.dart';
 import '../utils/app_colors.dart';
+import '../widgets/advance_entry_notice.dart';
+import '../widgets/tile_card.dart';
+import '../utils/entry_date.dart';
+import '../utils/ride_distance.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -202,24 +206,41 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            DateFormat('EEEE').format(date),
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.of(context).textPrimary,
+                      // Expanded rather than a trailing Spacer: the weekday and
+                      // the Advance badge need room to shrink before the day's
+                      // distance is pushed off the right edge
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    DateFormat('EEEE').format(date),
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.of(context).textPrimary,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                // Advance applies to the whole day, so it is
+                                // stated once here rather than on every entry
+                                if (isAdvanceEntryDate(date)) ...[
+                                  const SizedBox(width: 8),
+                                  const AdvanceEntryBadge(),
+                                ],
+                              ],
                             ),
-                          ),
-                          Text(
-                            DateFormat('MMMM yyyy').format(date),
-                            style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary),
-                          ),
-                        ],
+                            Text(
+                              DateFormat('MMMM yyyy').format(date),
+                              style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary),
+                            ),
+                          ],
+                        ),
                       ),
-                      const Spacer(),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
@@ -242,18 +263,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
 
                 // Entries for this date
-                Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
+                TileCard(
+                  color: Theme.of(context).cardColor,
                   child: ListView.separated(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -329,11 +340,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildOdometerTile(BuildContext context, OdometerEntry entry, BikeProvider provider) {
-    // Calculate distance from previous entry
-    final allOdo = List<OdometerEntry>.from(provider.odometerEntries)
-      ..sort((a, b) => a.reading.compareTo(b.reading));
-    final idx = allOdo.indexWhere((e) => e.id == entry.id);
-    final rideDistance = idx > 0 ? entry.reading - allOdo[idx - 1].reading : 0.0;
+    // Distance covered to reach this reading, measured from the entry before
+    // it in time (see distanceFromPrevious for why not by reading)
+    final rideDistance =
+        distanceFromPrevious(provider.odometerEntries, entry);
 
     return Dismissible(
       key: Key('odo_${entry.id}'),
@@ -434,6 +444,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         title: Text(
           '${entry.liters.toStringAsFixed(2)} L  •  ₹${entry.totalCost.toStringAsFixed(0)}',
           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          overflow: TextOverflow.ellipsis,
         ),
         subtitle: Row(
           children: [
@@ -575,6 +586,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         title: Text(
           '${entry.category}  •  ₹${entry.cost.toStringAsFixed(0)}',
           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          overflow: TextOverflow.ellipsis,
         ),
         subtitle: Text(
           entry.note ?? 'Maintenance',

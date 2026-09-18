@@ -2,6 +2,39 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../utils/app_colors.dart';
 
+/// Compact marker for an entry dated ahead of today, for use in entry lists
+/// where a full banner would not fit.
+class AdvanceEntryBadge extends StatelessWidget {
+  const AdvanceEntryBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.of(context).reminderBg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.of(context).reminderBorder),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.schedule, size: 11, color: Color(0xFFE65100)),
+          SizedBox(width: 3),
+          Text(
+            'Advance',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFFE65100),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Shown in the add/edit sheets when the entry is dated ahead of today, so it
 /// is obvious the reading is being recorded in advance.
 class AdvanceEntryNotice extends StatelessWidget {

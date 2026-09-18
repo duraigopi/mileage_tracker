@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../providers/bike_provider.dart';
 import '../services/csv_service.dart';
 import '../utils/app_colors.dart';
+import '../widgets/tile_card.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -222,12 +223,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // Security section
           Text('Security', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.textTertiary)),
           const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: c.cardShadow,
-            ),
+          TileCard(
             child: Column(
               children: [
                 ListTile(
@@ -261,12 +257,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // Data section
           Text('Data', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.textTertiary)),
           const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: c.cardShadow,
-            ),
+          TileCard(
             child: Column(
               children: [
                 ListTile(
@@ -307,12 +298,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // App info
           Text('About', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.textTertiary)),
           const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              color: c.card,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: c.cardShadow,
-            ),
+          TileCard(
             child: Column(
               children: [
                 ListTile(

@@ -394,16 +394,16 @@ class _AddFuelSheetState extends State<AddFuelSheet> {
           optionsViewBuilder: (context, onSelected, options) {
             return Align(
               alignment: Alignment.topLeft,
+              // The fill belongs on the Material, not on a DecoratedBox below
+              // it, or the options' ink splashes are painted over
               child: Material(
                 elevation: 4,
+                color: AppColors.of(context).card,
                 borderRadius: BorderRadius.circular(12),
+                clipBehavior: Clip.antiAlias,
                 child: Container(
                   constraints: const BoxConstraints(maxHeight: 180),
                   width: MediaQuery.of(context).size.width - 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.of(context).card,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                   child: ListView.separated(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     shrinkWrap: true,

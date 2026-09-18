@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../providers/bike_provider.dart';
 import '../models/fuel_entry.dart';
 import '../utils/app_colors.dart';
+import '../widgets/tile_card.dart';
 import '../widgets/scroll_animated.dart';
 import '../widgets/animated_number.dart';
 
@@ -949,14 +950,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Widget _buildFuelHistoryList(BikeProvider provider) {
     final entries = provider.fuelEntries;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 2)),
-        ],
-      ),
+    return TileCard(
+      color: Theme.of(context).cardColor,
       child: ListView.separated(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),

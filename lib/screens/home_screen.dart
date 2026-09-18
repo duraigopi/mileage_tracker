@@ -6,6 +6,7 @@ import '../models/odometer_entry.dart';
 import '../models/fuel_entry.dart';
 import '../models/maintenance_entry.dart';
 import '../utils/app_colors.dart';
+import '../widgets/tile_card.dart';
 import '../utils/entry_date.dart';
 import '../widgets/scroll_animated.dart';
 import '../widgets/animated_number.dart';
@@ -757,12 +758,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildRecentEntries(BikeProvider provider) {
     final recent = provider.allEntriesSorted.take(5).toList();
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.of(context).card,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppColors.of(context).cardShadow,
-      ),
+    return TileCard(
       child: ListView.separated(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),

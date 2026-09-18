@@ -503,16 +503,16 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
           optionsViewBuilder: (context, onSelected, options) {
             return Align(
               alignment: Alignment.topLeft,
+              // The fill belongs on the Material, not on a DecoratedBox below
+              // it, or the options' ink splashes are painted over
               child: Material(
                 elevation: 4,
+                color: AppColors.of(context).card,
                 borderRadius: BorderRadius.circular(12),
+                clipBehavior: Clip.antiAlias,
                 child: Container(
                   constraints: const BoxConstraints(maxHeight: 180),
                   width: MediaQuery.of(context).size.width - 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.of(context).card,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                   child: ListView.separated(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     shrinkWrap: true,
@@ -602,7 +602,41 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
     }
   }
 
-  void _save() {
+  /// Asks before saving a reading that would leave an already-recorded later
+  /// entry below it. Returns true to go ahead.
+  Future<bool> _confirmOvertakingLaterEntry(
+    OdometerEntry later,
+    double reading,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Higher than a later entry'),
+        content: Text(
+          'The entry dated ${DateFormat('MMM dd').format(later.date)} already reads '
+          '${later.reading.toStringAsFixed(1)} km.\n\n'
+          'Saving ${reading.toStringAsFixed(1)} km here leaves that later entry below '
+          'this one. If it was recorded in advance, edit it afterwards so the '
+          'readings stay in order.',
+          style: const TextStyle(fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save anyway'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _save() async {
     _autoFormatReading();
     final provider = context.read<BikeProvider>();
     final fullReading = _getFullReading(provider);
@@ -618,10 +652,13 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
       return;
     }
 
-    final nextReading = provider.odometerAfter(_entryDateTime);
-    if (!_isEditing && nextReading != null && fullReading > nextReading) {
-      setState(() => _errorText = 'A later entry already reads ${nextReading.toStringAsFixed(1)} km — this one must be lower');
-      return;
+    // A later entry reading lower than this one is impossible for an odometer,
+    // but the later entry is usually an advance estimate while this is the
+    // actual meter reading — so confirm rather than refuse.
+    final later = provider.lowestEntryAfter(_entryDateTime);
+    if (!_isEditing && later != null && fullReading > later.reading) {
+      final proceed = await _confirmOvertakingLaterEntry(later, fullReading);
+      if (!proceed || !mounted) return;
     }
 
     if (!_isEditing && provider.isDuplicateReadingForDate(fullReading, _selectedDate)) {
