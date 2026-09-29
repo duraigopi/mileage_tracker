@@ -20,15 +20,30 @@ class NotificationService {
     if (_initialized) return;
     // The status-bar icon must be a plain alpha-mask drawable, not the
     // full-color launcher icon (which Android can't render there).
+    // Permission is deliberately not requested here — see [requestPermission],
+    // which is only called after the user has seen a rationale dialog.
     const settings = InitializationSettings(
       android: AndroidInitializationSettings('ic_stat_notify'),
-      iOS: DarwinInitializationSettings(),
+      iOS: DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      ),
     );
     await _plugin.initialize(settings: settings);
+    _initialized = true;
+  }
+
+  /// Requests the OS notification permission. Call only after showing the
+  /// user a rationale for why the app wants it.
+  Future<void> requestPermission() async {
+    if (!_initialized) await initialize();
     await _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
-    _initialized = true;
+    await _plugin
+        .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
   Future<void> showServiceDueNotification(String category) async {

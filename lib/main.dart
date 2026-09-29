@@ -110,6 +110,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   final _auth = LocalAuthentication();
 
   bool _historySearchActive = false;
+  bool _notificationRationaleChecked = false;
 
   @override
   void initState() {
@@ -190,6 +191,33 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     setState(() => _historySearchActive = !_historySearchActive);
   }
 
+  Future<void> _maybeShowNotificationRationale() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('notification_rationale_shown') ?? false) return;
+    await prefs.setBool('notification_rationale_shown', true);
+    if (!mounted) return;
+
+    final allow = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Stay on top of maintenance'),
+        content: const Text(
+          'RideLog can notify you when a service reminder you set (like an oil '
+          'change) becomes due. Allow notifications?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Allow')),
+        ],
+      ),
+    );
+    if (allow == true) {
+      await NotificationService().requestPermission();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_locked) {
@@ -223,6 +251,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         ),
       );
     }
+    if (!_notificationRationaleChecked) {
+      _notificationRationaleChecked = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowNotificationRationale());
+    }
+
     final screens = [
       HomeScreen(onViewAllHistory: () => _switchToTab(2)),
       const AnalyticsScreen(),
