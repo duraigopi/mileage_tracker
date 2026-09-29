@@ -590,7 +590,28 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
           _readingController.text = (baseline % 1000).toStringAsFixed(1);
         }
       }
+      // Same idea for the note: carry over the last entry's note instead of
+      // the return-ride suggestion, which is keyed off the current time of
+      // day rather than the advance entry's date.
+      if (!_isEditing &&
+          isAdvanceEntryDate(date) &&
+          _noteController.text.trim().isEmpty &&
+          !hasAdvanceEntry) {
+        final lastNote = _lastNoteAsOf(provider, _entryDateTime);
+        if (lastNote != null) {
+          _noteController.text = lastNote;
+        }
+      }
     });
+  }
+
+  /// Note of the most recent entry at or before [dateTime], if any.
+  String? _lastNoteAsOf(BikeProvider provider, DateTime dateTime) {
+    final priorEntries = provider.odometerEntries.where((e) => !e.date.isAfter(dateTime)).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    if (priorEntries.isEmpty) return null;
+    final note = priorEntries.last.note?.trim();
+    return (note == null || note.isEmpty) ? null : note;
   }
 
   Future<void> _pickTime() async {
