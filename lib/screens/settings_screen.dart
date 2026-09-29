@@ -28,6 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   bool _biometricAvailable = false;
   String? _version;
   bool? _notificationsEnabled;
+  bool _notificationsPrefEnabled = true;
   final _auth = LocalAuthentication();
 
   @override
@@ -54,7 +55,17 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   Future<void> _loadNotificationStatus() async {
     final granted = await NotificationService().isPermissionGranted();
-    if (mounted) setState(() => _notificationsEnabled = granted);
+    if (mounted) {
+      setState(() {
+        _notificationsEnabled = granted;
+        _notificationsPrefEnabled = NotificationService().isEnabled;
+      });
+    }
+  }
+
+  Future<void> _toggleNotificationsPref(bool value) async {
+    await NotificationService().setEnabled(value);
+    if (mounted) setState(() => _notificationsPrefEnabled = value);
   }
 
   Future<void> _fixNotificationPermission() async {
@@ -309,7 +320,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
-                  _notificationsEnabled == true ? Icons.notifications_active_outlined : Icons.notifications_off_outlined,
+                  _notificationsEnabled == true && _notificationsPrefEnabled
+                      ? Icons.notifications_active_outlined
+                      : Icons.notifications_off_outlined,
                   color: const Color(0xFFE65100),
                   size: 24,
                 ),
@@ -318,12 +331,20 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               subtitle: Text(
                 _notificationsEnabled == null
                     ? 'Checking…'
-                    : _notificationsEnabled!
-                        ? 'Notifications enabled'
-                        : 'Notifications off — tap to enable',
+                    : !_notificationsEnabled!
+                        ? 'Notifications off — tap to enable'
+                        : _notificationsPrefEnabled
+                            ? 'Notifications enabled'
+                            : 'Muted in-app',
                 style: TextStyle(fontSize: 12, color: c.textTertiary),
               ),
-              trailing: _notificationsEnabled == true ? null : Icon(Icons.chevron_right, color: c.textHint),
+              trailing: _notificationsEnabled == true
+                  ? Switch(
+                      value: _notificationsPrefEnabled,
+                      onChanged: _toggleNotificationsPref,
+                      activeColor: const Color(0xFF1B5E20),
+                    )
+                  : Icon(Icons.chevron_right, color: c.textHint),
             ),
           ),
 
