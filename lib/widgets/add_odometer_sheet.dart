@@ -566,7 +566,31 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
 
   Future<void> _pickDate() async {
     final date = await showEntryDatePicker(context, _selectedDate);
-    if (date != null) setState(() => _selectedDate = date);
+    if (date == null) return;
+
+    setState(() {
+      _selectedDate = date;
+      // Advance entries default to an AM timestamp, unless the user already
+      // picked a time by hand.
+      if (!_isEditing && isAdvanceEntryDate(date) && !_timeEdited) {
+        _selectedTime = TimeOfDay(hour: _selectedTime.hour % 12, minute: _selectedTime.minute);
+      }
+      // Autofill with the last known reading when switching to an advance
+      // (future-dated) entry, unless the user already typed something or an
+      // advance entry already exists (its reading is only an estimate, so it
+      // shouldn't be chained into as a baseline for another advance entry).
+      final provider = context.read<BikeProvider>();
+      final hasAdvanceEntry = provider.odometerEntries.any((e) => isAdvanceEntryDate(e.date));
+      if (!_isEditing &&
+          isAdvanceEntryDate(date) &&
+          _readingController.text.trim().isEmpty &&
+          !hasAdvanceEntry) {
+        final baseline = _baselineReading(provider);
+        if (baseline > 0) {
+          _readingController.text = (baseline % 1000).toStringAsFixed(1);
+        }
+      }
+    });
   }
 
   Future<void> _pickTime() async {
