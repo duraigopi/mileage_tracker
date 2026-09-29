@@ -46,6 +46,26 @@ class NotificationService {
         ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
+  /// Whether the app is currently allowed to post notifications.
+  Future<bool> isPermissionGranted() async {
+    if (!_initialized) await initialize();
+    final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (android != null) return await android.areNotificationsEnabled() ?? false;
+
+    final ios = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+    if (ios != null) return (await ios.checkPermissions())?.isEnabled ?? false;
+
+    return false;
+  }
+
+  /// Opens the OS notification settings screen for this app, for when the
+  /// permission was denied and a fresh request wouldn't prompt again.
+  Future<void> openNotificationSettings() async {
+    await _plugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.openAppNotificationSettings();
+  }
+
   Future<void> showServiceDueNotification(String category) async {
     if (!_initialized) await initialize();
     const details = NotificationDetails(

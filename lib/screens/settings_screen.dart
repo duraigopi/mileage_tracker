@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 import '../providers/bike_provider.dart';
 import '../providers/theme_provider.dart';
 import '../services/csv_service.dart';
+import '../services/notification_service.dart';
 import '../utils/app_colors.dart';
 import '../widgets/tile_card.dart';
 
@@ -22,17 +23,59 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObserver {
   bool _fingerprintEnabled = false;
   bool _biometricAvailable = false;
   String? _version;
+  bool? _notificationsEnabled;
   final _auth = LocalAuthentication();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSettings();
     _loadVersion();
+    _loadNotificationStatus();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Catches the user flipping the permission in system settings and
+    // coming back to the app.
+    if (state == AppLifecycleState.resumed) _loadNotificationStatus();
+  }
+
+  Future<void> _loadNotificationStatus() async {
+    final granted = await NotificationService().isPermissionGranted();
+    if (mounted) setState(() => _notificationsEnabled = granted);
+  }
+
+  Future<void> _fixNotificationPermission() async {
+    await NotificationService().requestPermission();
+    final granted = await NotificationService().isPermissionGranted();
+    if (mounted) setState(() => _notificationsEnabled = granted);
+    if (granted || !mounted) return;
+
+    final openSettings = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Notifications are off'),
+        content: const Text('Enable notifications in system settings to get service-due reminders.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Open Settings')),
+        ],
+      ),
+    );
+    if (openSettings == true) await NotificationService().openNotificationSettings();
   }
 
   Future<void> _loadSettings() async {
@@ -248,6 +291,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 selected: {themeProvider.themeMode},
                 onSelectionChanged: (selected) => themeProvider.setThemeMode(selected.first),
               ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Notifications section
+          Text('Notifications', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.textTertiary)),
+          const SizedBox(height: 8),
+          TileCard(
+            child: ListTile(
+              onTap: _notificationsEnabled == true ? null : _fixNotificationPermission,
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE65100).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  _notificationsEnabled == true ? Icons.notifications_active_outlined : Icons.notifications_off_outlined,
+                  color: const Color(0xFFE65100),
+                  size: 24,
+                ),
+              ),
+              title: const Text('Service Reminders', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(
+                _notificationsEnabled == null
+                    ? 'Checking…'
+                    : _notificationsEnabled!
+                        ? 'Notifications enabled'
+                        : 'Notifications off — tap to enable',
+                style: TextStyle(fontSize: 12, color: c.textTertiary),
+              ),
+              trailing: _notificationsEnabled == true ? null : Icon(Icons.chevron_right, color: c.textHint),
             ),
           ),
 
