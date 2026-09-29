@@ -36,12 +36,13 @@ dependencies:
   provider: ^6.1.2
   fl_chart: ^0.69.2
   intl: ^0.20.1
-  share_plus: ^10.1.4
   path_provider: ^2.1.5
   local_auth: ^2.3.0
   local_auth_android: ^1.0.46
   shared_preferences: ^2.3.4
   file_picker: ^11.0.3
+  package_info_plus: ^8.1.2
+  flutter_local_notifications: ^22.3.1
 
 dev_dependencies:
   flutter_test:

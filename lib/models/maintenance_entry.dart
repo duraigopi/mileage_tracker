@@ -1,11 +1,13 @@
 class MaintenanceCategory {
   static const String general = 'General Service';
+  static const String oilChange = 'Oil Change';
   static const String airCheckup = 'Air Checkup';
   static const String washing = 'Washing';
   static const String other = 'Other';
 
   static const List<String> all = [
     general,
+    oilChange,
     airCheckup,
     washing,
     other,
@@ -21,6 +23,11 @@ class MaintenanceEntry {
   final String? note;
   final DateTime createdAt;
 
+  /// Optional reminder set on this entry: "remind me again after this many
+  /// days / this many km." Either, both, or neither may be set.
+  final int? reminderDays;
+  final double? reminderKm;
+
   MaintenanceEntry({
     this.id,
     required this.date,
@@ -29,6 +36,8 @@ class MaintenanceEntry {
     this.odometerReading,
     this.note,
     DateTime? createdAt,
+    this.reminderDays,
+    this.reminderKm,
   }) : createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toMap() {
@@ -40,6 +49,8 @@ class MaintenanceEntry {
       'odometer_reading': odometerReading,
       'note': note,
       'created_at': createdAt.toIso8601String(),
+      'reminder_days': reminderDays,
+      'reminder_km': reminderKm,
     };
   }
 
@@ -54,6 +65,8 @@ class MaintenanceEntry {
           : null,
       note: map['note'] as String?,
       createdAt: DateTime.parse(map['created_at'] as String),
+      reminderDays: map['reminder_days'] as int?,
+      reminderKm: map['reminder_km'] != null ? (map['reminder_km'] as num).toDouble() : null,
     );
   }
 
@@ -65,6 +78,8 @@ class MaintenanceEntry {
     double? odometerReading,
     String? note,
     DateTime? createdAt,
+    int? reminderDays,
+    double? reminderKm,
   }) {
     return MaintenanceEntry(
       id: id ?? this.id,
@@ -74,6 +89,8 @@ class MaintenanceEntry {
       odometerReading: odometerReading ?? this.odometerReading,
       note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
+      reminderDays: reminderDays ?? this.reminderDays,
+      reminderKm: reminderKm ?? this.reminderKm,
     );
   }
 }

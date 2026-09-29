@@ -23,7 +23,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE odometer_entries (
@@ -55,7 +55,9 @@ class DatabaseService {
             cost REAL NOT NULL,
             odometer_reading REAL,
             note TEXT,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            reminder_days INTEGER,
+            reminder_km REAL
           )
         ''');
       },
@@ -72,6 +74,10 @@ class DatabaseService {
               created_at TEXT NOT NULL
             )
           ''');
+        }
+        if (oldVersion < 4) {
+          await db.execute('ALTER TABLE maintenance_entries ADD COLUMN reminder_days INTEGER');
+          await db.execute('ALTER TABLE maintenance_entries ADD COLUMN reminder_km REAL');
         }
       },
     );

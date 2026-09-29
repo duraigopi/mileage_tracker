@@ -8,6 +8,7 @@ import '../utils/app_colors.dart';
 import '../widgets/tile_card.dart';
 import '../widgets/scroll_animated.dart';
 import '../widgets/animated_number.dart';
+import '../widgets/add_fuel_sheet.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -123,14 +124,22 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        return NotificationListener<ScrollNotification>(
+        return RefreshIndicator(
+          onRefresh: () => provider.loadData(),
+          color: AppColors.of(context).accent,
+          child: NotificationListener<ScrollNotification>(
           onNotification: (_) { _onScroll(); return false; },
           child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
           children: [
-              // Service reminder
-              if (provider.isServiceDue)
-                _animated(0, _buildServiceBanner(provider)),
+              // Service reminders
+              if (provider.dueReminders.isNotEmpty)
+                _animated(0, Column(
+                  children: [
+                    for (final reminder in provider.dueReminders) _buildServiceBanner(reminder),
+                  ],
+                )),
 
               // Period selector
               _animated(1, _buildPeriodSelector()),
@@ -166,6 +175,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 _animated(7, _buildFuelHistoryList(provider)),
               ],
             ],
+          ),
           ),
         );
       },
@@ -807,9 +817,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildServiceBanner(BikeProvider provider) {
-    final days = provider.daysSinceLastService;
-    final km = provider.kmSinceLastService;
+  Widget _buildServiceBanner(DueServiceReminder reminder) {
+    final days = reminder.daysSince;
+    final km = reminder.kmSince;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
@@ -824,8 +834,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Service due — ${[
-                if (days != null) '${days}d ago',
+              '${reminder.category} due — ${[
+                '${days}d ago',
                 if (km != null) '${km.toStringAsFixed(0)} km',
               ].join(' • ')}',
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFE65100)),
@@ -962,8 +972,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
+  void _editFuelEntry(FuelEntry entry) {
+    final provider = context.read<BikeProvider>();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ChangeNotifierProvider.value(value: provider, child: AddFuelSheet(entry: entry)),
+    );
+  }
+
   Widget _buildFuelHistoryTile(FuelEntry entry) {
     return ListTile(
+      onTap: () => _editFuelEntry(entry),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       leading: Container(
         width: 48,
@@ -979,8 +1000,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       subtitle: Text(
           '₹${entry.pricePerLiter.toStringAsFixed(1)}/L  •  at ${NumberFormat('#,##0').format(entry.odometerReading)} km',
           style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary)),
-      trailing: Text(DateFormat('MMM dd').format(entry.date),
-          style: TextStyle(fontSize: 12, color: AppColors.of(context).textHint)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(DateFormat('MMM dd').format(entry.date),
+              style: TextStyle(fontSize: 12, color: AppColors.of(context).textHint)),
+          const SizedBox(width: 4),
+          Icon(Icons.edit_outlined, size: 14, color: AppColors.of(context).border),
+        ],
+      ),
     );
   }
 }

@@ -11,6 +11,8 @@ import '../utils/entry_date.dart';
 import '../widgets/scroll_animated.dart';
 import '../widgets/animated_number.dart';
 import '../widgets/add_odometer_sheet.dart';
+import '../widgets/add_fuel_sheet.dart';
+import '../widgets/add_maintenance_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onViewAllHistory;
@@ -62,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Consumer<BikeProvider>(
       builder: (context, provider, _) {
         if (provider.isLoading) {
-          return const SizedBox.shrink();
+          return const Center(child: CircularProgressIndicator());
         }
 
         if (provider.odometerEntries.isEmpty && provider.fuelEntries.isEmpty) {
@@ -84,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         return RefreshIndicator(
           onRefresh: () => provider.loadData(),
-          color: const Color(0xFF1B5E20),
+          color: AppColors.of(context).accent,
           child: NotificationListener<ScrollNotification>(
           onNotification: (_) { _onScroll(); return false; },
           child: ListView(
@@ -95,11 +97,24 @@ class _HomeScreenState extends State<HomeScreen> {
               _animated(0, _buildOdometerCard(provider)),
               const SizedBox(height: 16),
 
+              // Service Reminders
+              if (provider.dueReminders.isNotEmpty) ...[
+                _animated(1, Column(
+                  children: [
+                    for (final reminder in provider.dueReminders) ...[
+                      _buildServiceReminder(reminder),
+                      const SizedBox(height: 8),
+                    ],
+                  ],
+                )),
+                const SizedBox(height: 8),
+              ],
+
               // Today's Summary Card
-              _animated(1, _buildTodaySummaryCard(provider)),
+              _animated(2, _buildTodaySummaryCard(provider)),
 
               // Distance Stats Grid
-              _animated(2, Column(
+              _animated(3, Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSectionHeader('Ride Distance'),
@@ -133,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 24),
 
               // Fuel Efficiency Section
-              _animated(3, Column(
+              _animated(4, Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSectionHeader('Fuel Efficiency'),
@@ -144,7 +159,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 24),
 
               // Fuel Cost Summary
-              _animated(4, Column(
+              _animated(5, Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSectionHeader('Fuel Costs'),
@@ -156,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
               // Maintenance Summary
               if (provider.maintenanceEntries.isNotEmpty) ...[
                 const SizedBox(height: 24),
-                _animated(5, Column(
+                _animated(6, Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildSectionHeader('Maintenance'),
@@ -164,12 +179,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildMaintenanceCard(provider),
                   ],
                 )),
-              ],
-
-              // Service Reminder
-              if (provider.isServiceDue) ...[
-                const SizedBox(height: 24),
-                _animated(6, _buildServiceReminder(provider)),
               ],
 
               // Monthly Spending Chart
@@ -606,6 +615,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     const categoryColors = <String, Color>{
       'General Service': Color(0xFF1976D2),
+      'Oil Change': Color(0xFF6D4C41),
+      'Air Checkup': Color(0xFF00897B),
       'Washing': Color(0xFF0288D1),
       'Other': Color(0xFF757575),
     };
@@ -653,9 +664,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildServiceReminder(BikeProvider provider) {
-    final days = provider.daysSinceLastService;
-    final km = provider.kmSinceLastService;
+  Widget _buildServiceReminder(DueServiceReminder reminder) {
+    final days = reminder.daysSince;
+    final km = reminder.kmSince;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -678,11 +689,11 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Service Due', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFFE65100))),
+                Text('${reminder.category} Due', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFFE65100))),
                 const SizedBox(height: 4),
                 Text(
                   [
-                    if (days != null) '$days days ago',
+                    '$days days ago',
                     if (km != null) '${km.toStringAsFixed(0)} km since last service',
                   ].join(' • '),
                   style: TextStyle(fontSize: 12, color: AppColors.of(context).textSecondary),
@@ -779,8 +790,39 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _editOdometerEntry(OdometerEntry entry) {
+    final provider = context.read<BikeProvider>();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ChangeNotifierProvider.value(value: provider, child: AddOdometerSheet(entry: entry)),
+    );
+  }
+
+  void _editFuelEntry(FuelEntry entry) {
+    final provider = context.read<BikeProvider>();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ChangeNotifierProvider.value(value: provider, child: AddFuelSheet(entry: entry)),
+    );
+  }
+
+  void _editMaintenanceEntry(MaintenanceEntry entry) {
+    final provider = context.read<BikeProvider>();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ChangeNotifierProvider.value(value: provider, child: AddMaintenanceSheet(entry: entry)),
+    );
+  }
+
   Widget _buildOdometerTile(OdometerEntry entry) {
     return ListTile(
+      onTap: () => _editOdometerEntry(entry),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: Container(
         padding: const EdgeInsets.all(8),
@@ -798,9 +840,16 @@ class _HomeScreenState extends State<HomeScreen> {
         entry.note ?? 'Odometer reading',
         style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary),
       ),
-      trailing: Text(
-        DateFormat('MMM dd, hh:mm a').format(entry.date),
-        style: TextStyle(fontSize: 11, color: AppColors.of(context).textHint),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            DateFormat('MMM dd, hh:mm a').format(entry.date),
+            style: TextStyle(fontSize: 11, color: AppColors.of(context).textHint),
+          ),
+          const SizedBox(width: 4),
+          Icon(Icons.edit_outlined, size: 14, color: AppColors.of(context).border),
+        ],
       ),
     );
   }
@@ -824,6 +873,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return ListTile(
+      onTap: () => _editFuelEntry(entry),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: Container(
         padding: const EdgeInsets.all(8),
@@ -854,15 +904,23 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ],
       ),
-      trailing: Text(
-        DateFormat('MMM dd, hh:mm a').format(entry.date),
-        style: TextStyle(fontSize: 11, color: AppColors.of(context).textHint),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            DateFormat('MMM dd, hh:mm a').format(entry.date),
+            style: TextStyle(fontSize: 11, color: AppColors.of(context).textHint),
+          ),
+          const SizedBox(width: 4),
+          Icon(Icons.edit_outlined, size: 14, color: AppColors.of(context).border),
+        ],
       ),
     );
   }
 
   Widget _buildMaintenanceTile(MaintenanceEntry entry) {
     return ListTile(
+      onTap: () => _editMaintenanceEntry(entry),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: Container(
         padding: const EdgeInsets.all(8),
@@ -880,9 +938,16 @@ class _HomeScreenState extends State<HomeScreen> {
         entry.note ?? 'Maintenance',
         style: TextStyle(fontSize: 12, color: AppColors.of(context).textTertiary),
       ),
-      trailing: Text(
-        DateFormat('MMM dd, hh:mm a').format(entry.date),
-        style: TextStyle(fontSize: 11, color: AppColors.of(context).textHint),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            DateFormat('MMM dd, hh:mm a').format(entry.date),
+            style: TextStyle(fontSize: 11, color: AppColors.of(context).textHint),
+          ),
+          const SizedBox(width: 4),
+          Icon(Icons.edit_outlined, size: 14, color: AppColors.of(context).border),
+        ],
       ),
     );
   }

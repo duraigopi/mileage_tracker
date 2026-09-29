@@ -1,12 +1,30 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/odometer_entry.dart';
 import '../models/fuel_entry.dart';
 import '../models/maintenance_entry.dart';
 import '../services/csv_service.dart';
 import '../services/database_service.dart';
+import '../services/notification_service.dart';
 import '../utils/entry_date.dart';
 import '../utils/ride_distance.dart';
+
+/// A maintenance category whose latest entry is overdue for the reminder set
+/// on that entry.
+class DueServiceReminder {
+  final String category;
+  final int? entryId;
+  final int daysSince;
+  final double? kmSince;
+
+  const DueServiceReminder({
+    required this.category,
+    required this.entryId,
+    required this.daysSince,
+    this.kmSince,
+  });
+}
 
 /// Outcome of a CSV import, for the confirmation snackbar.
 class ImportResult {
@@ -24,11 +42,75 @@ class ImportResult {
 class BikeProvider extends ChangeNotifier {
   final DatabaseService _db = DatabaseService();
 
+  static const _lastBackupPrefsKey = 'last_backup_at';
+
   List<OdometerEntry> _odometerEntries = [];
   List<FuelEntry> _fuelEntries = [];
   List<MaintenanceEntry> _maintenanceEntries = [];
   bool _isLoading = true;
-  bool _hasExported = false;
+  DateTime? _lastBackupAt;
+
+  final Map<String, int?> _notifiedForBaseline = {};
+
+  BikeProvider() {
+    _loadLastBackupAt();
+  }
+
+  Future<void> _loadLastBackupAt() async {
+    final prefs = await SharedPreferences.getInstance();
+    final iso = prefs.getString(_lastBackupPrefsKey);
+    _lastBackupAt = iso != null ? DateTime.tryParse(iso) : null;
+    notifyListeners();
+  }
+
+  DateTime? get lastBackupAt => _lastBackupAt;
+
+  /// Categories whose most recent entry is overdue for its own reminder
+  /// (set on that entry via the Add Maintenance form), one per category.
+  List<DueServiceReminder> get dueReminders {
+    final byCategory = <String, List<MaintenanceEntry>>{};
+    for (final e in _maintenanceEntries) {
+      byCategory.putIfAbsent(e.category, () => []).add(e);
+    }
+
+    final result = <DueServiceReminder>[];
+    for (final entries in byCategory.values) {
+      entries.sort((a, b) => b.date.compareTo(a.date));
+      final latest = entries.first;
+      if (latest.reminderDays == null && latest.reminderKm == null) continue;
+
+      final daysSince = DateTime.now().difference(latest.date).inDays;
+      final baseline = latest.odometerReading ?? odometerAsOf(latest.date);
+      final kmSince = baseline > 0 ? currentOdometer - baseline : null;
+
+      final daysDue = latest.reminderDays != null && daysSince >= latest.reminderDays!;
+      final kmDue = latest.reminderKm != null && kmSince != null && kmSince >= latest.reminderKm!;
+      if (!daysDue && !kmDue) continue;
+
+      result.add(DueServiceReminder(
+        category: latest.category,
+        entryId: latest.id,
+        daysSince: daysSince,
+        kmSince: kmSince,
+      ));
+    }
+    return result;
+  }
+
+  /// Shows a local notification the first time a category's reminder becomes
+  /// due, so reopening the app or reloading data doesn't repeat it — it only
+  /// fires again once a new entry for that category changes the baseline.
+  void _maybeNotifyServiceDue() {
+    final due = dueReminders;
+    final dueCategories = due.map((d) => d.category).toSet();
+    _notifiedForBaseline.removeWhere((category, _) => !dueCategories.contains(category));
+
+    for (final reminder in due) {
+      if (_notifiedForBaseline[reminder.category] == reminder.entryId) continue;
+      _notifiedForBaseline[reminder.category] = reminder.entryId;
+      NotificationService().showServiceDueNotification(reminder.category);
+    }
+  }
 
   List<OdometerEntry> get odometerEntries => _odometerEntries;
   List<FuelEntry> get fuelEntries => _fuelEntries;
@@ -435,6 +517,7 @@ class BikeProvider extends ChangeNotifier {
     }
 
     _isLoading = false;
+    _maybeNotifyServiceDue();
     notifyListeners();
   }
 
@@ -485,31 +568,6 @@ class BikeProvider extends ChangeNotifier {
 
   // --- Maintenance Reminders ---
 
-  int? get daysSinceLastService {
-    final services = _maintenanceEntries
-        .where((e) => e.category == 'General Service')
-        .toList();
-    if (services.isEmpty) return null;
-    services.sort((a, b) => b.date.compareTo(a.date));
-    return DateTime.now().difference(services.first.date).inDays;
-  }
-
-  double? get kmSinceLastService {
-    final services = _maintenanceEntries
-        .where((e) => e.category == 'General Service' && e.odometerReading != null)
-        .toList();
-    if (services.isEmpty) return null;
-    services.sort((a, b) => b.date.compareTo(a.date));
-    return currentOdometer - services.first.odometerReading!;
-  }
-
-  bool get isServiceDue {
-    final days = daysSinceLastService;
-    final km = kmSinceLastService;
-    if (days == null && km == null) return false;
-    return (days != null && days >= 90) || (km != null && km >= 3000);
-  }
-
   /// Check if an odometer reading already exists for the same day
   bool isDuplicateReadingForDate(double reading, DateTime date) {
     final dayStart = DateTime(date.year, date.month, date.day);
@@ -539,7 +597,9 @@ class BikeProvider extends ChangeNotifier {
 
   bool get shouldRemindBackup {
     final totalEntries = _odometerEntries.length + _fuelEntries.length + _maintenanceEntries.length;
-    return totalEntries > 50 && !_hasExported;
+    if (totalEntries <= 50) return false;
+    if (_lastBackupAt == null) return true;
+    return DateTime.now().difference(_lastBackupAt!).inDays >= 30;
   }
 
   // --- CSV Export / Import ---
@@ -566,9 +626,11 @@ class BikeProvider extends ChangeNotifier {
   String exportFileName() =>
       'ridelog_backup_${DateFormat('yyyyMMdd_HHmm').format(DateTime.now())}.csv';
 
-  void markExported() {
-    _hasExported = true;
+  Future<void> markExported() async {
+    _lastBackupAt = DateTime.now();
     notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastBackupPrefsKey, _lastBackupAt!.toIso8601String());
   }
 
   /// Restores [data] into the database.

@@ -7,6 +7,9 @@ class AppColors {
 
   bool get _isDark => Theme.of(_context).brightness == Brightness.dark;
 
+  // Brand accent (matches the light/dark colorSchemeSeed in main.dart)
+  Color get accent => _isDark ? const Color(0xFF4CAF50) : const Color(0xFF1B5E20);
+
   // Card & surface backgrounds
   Color get card => _isDark ? const Color(0xFF1E1E1E) : Colors.white;
   Color get surface => _isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade50;

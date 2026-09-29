@@ -15,7 +15,11 @@ import '../utils/entry_date.dart';
 import '../utils/ride_distance.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  /// Whether the search field should be shown, toggled by the search button
+  /// in the app bar (see [MainShell]) rather than owned by this screen.
+  final bool showSearch;
+
+  const HistoryScreen({super.key, this.showSearch = false});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -25,6 +29,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   int _filter = 0; // 0=All, 1=Odometer, 2=Fuel, 3=Maintenance
   late DateTime _currentMonth;
   final _scrollController = ScrollController();
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -34,8 +40,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   @override
+  void didUpdateWidget(covariant HistoryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.showSearch && !widget.showSearch) {
+      _searchController.clear();
+      setState(() => _searchQuery = '');
+    }
+  }
+
+  @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -53,6 +69,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (!next.isAfter(DateTime.now())) {
       _AnimatedListItem.resetAnimation();
       setState(() => _currentMonth = next);
+    }
+  }
+
+  Future<void> _pickMonth() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _currentMonth,
+      firstDate: kFirstEntryDate,
+      lastDate: DateTime.now(),
+      initialDatePickerMode: DatePickerMode.year,
+    );
+    if (picked != null) {
+      _AnimatedListItem.resetAnimation();
+      setState(() => _currentMonth = DateTime(picked.year, picked.month, 1));
     }
   }
 
@@ -91,12 +121,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
         }).toList();
 
         // Apply type filter
-        final entries = _filter == 0
+        final typeFiltered = _filter == 0
             ? monthEntries
             : monthEntries.where((e) {
                 if (_filter == 1) return e is OdometerEntry;
                 if (_filter == 2) return e is FuelEntry;
                 return e is MaintenanceEntry;
+              }).toList();
+
+        // Apply note search
+        final entries = _searchQuery.isEmpty
+            ? typeFiltered
+            : typeFiltered.where((e) {
+                final note = e is OdometerEntry
+                    ? e.note
+                    : e is FuelEntry
+                        ? e.note
+                        : (e as MaintenanceEntry).note;
+                return (note ?? '').toLowerCase().contains(_searchQuery.toLowerCase());
               }).toList();
 
         // Group entries by date
@@ -110,6 +152,34 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
         return Column(
           children: [
+            if (widget.showSearch)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  onChanged: (value) => setState(() => _searchQuery = value),
+                  decoration: InputDecoration(
+                    hintText: 'Search notes',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: AppColors.of(context).border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: AppColors.of(context).border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFF1B5E20), width: 2),
+                    ),
+                  ),
+                ),
+              ),
+
             // Month navigation
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
@@ -127,9 +197,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     onPressed: _previousMonth,
                     color: AppColors.of(context).textSecondary,
                   ),
-                  Text(
-                    DateFormat('MMMM yyyy').format(_currentMonth),
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.of(context).textPrimary),
+                  InkWell(
+                    onTap: _pickMonth,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Text(
+                        DateFormat('MMMM yyyy').format(_currentMonth),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.of(context).textPrimary),
+                      ),
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.chevron_right),
@@ -162,10 +239,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
             // Entry list
             Expanded(
               child: entries.isEmpty
-                  ? Center(child: Text('No entries for this filter', style: TextStyle(color: AppColors.of(context).textHint)))
+                  ? Center(
+                      child: Text(
+                        _searchQuery.isNotEmpty ? 'No entries match "$_searchQuery"' : 'No entries for this filter',
+                        style: TextStyle(color: AppColors.of(context).textHint),
+                      ),
+                    )
                   : RefreshIndicator(
           onRefresh: () => provider.loadData(),
-          color: const Color(0xFF1B5E20),
+          color: AppColors.of(context).accent,
           child: ListView.builder(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
@@ -543,12 +625,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _buildMaintenanceTile(BuildContext context, MaintenanceEntry entry, BikeProvider provider) {
     const categoryColors = <String, Color>{
       'General Service': Color(0xFF7B1FA2),
+      'Oil Change': Color(0xFF6D4C41),
       'Air Checkup': Color(0xFF00897B),
       'Washing': Color(0xFF0288D1),
       'Other': Color(0xFF8D6E63),
     };
     const categoryIcons = <String, IconData>{
       'General Service': Icons.build,
+      'Oil Change': Icons.oil_barrel,
       'Air Checkup': Icons.tire_repair,
       'Washing': Icons.water,
       'Other': Icons.more_horiz,

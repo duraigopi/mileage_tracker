@@ -5,16 +5,19 @@ import 'package:local_auth/local_auth.dart';
 import 'package:local_auth_android/local_auth_android.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/bike_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/analytics_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/notification_service.dart';
 import 'widgets/add_odometer_sheet.dart';
 import 'widgets/add_fuel_sheet.dart';
 import 'widgets/add_maintenance_sheet.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  NotificationService().initialize();
   runApp(const MyApp());
 }
 
@@ -23,9 +26,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => BikeProvider()..loadData(),
-      child: MaterialApp(
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => BikeProvider()..loadData()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+      ],
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) => MaterialApp(
         title: 'RideLog',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
@@ -80,8 +87,9 @@ class MyApp extends StatelessWidget {
           ),
           cardColor: const Color(0xFF1E1E1E),
         ),
-        themeMode: ThemeMode.system,
+        themeMode: themeProvider.themeMode,
         home: const MainShell(),
+        ),
       ),
     );
   }
@@ -100,6 +108,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   bool _authenticating = false;
   bool _wasInBackground = false;
   final _auth = LocalAuthentication();
+
+  bool _historySearchActive = false;
 
   @override
   void initState() {
@@ -141,7 +151,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     try {
       final authenticated = await _auth.authenticate(
         localizedReason: ' ',
-        options: const AuthenticationOptions(biometricOnly: true),
+        options: const AuthenticationOptions(biometricOnly: false),
         authMessages: [
           const AndroidAuthMessages(
             biometricHint: '',
@@ -168,7 +178,16 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   void _switchToTab(int index) {
-    setState(() => _currentIndex = index);
+    setState(() {
+      _currentIndex = index;
+      // Leaving History closes any in-progress search rather than leaving it
+      // active in the background.
+      if (index != 2) _historySearchActive = false;
+    });
+  }
+
+  void _toggleHistorySearch() {
+    setState(() => _historySearchActive = !_historySearchActive);
   }
 
   @override
@@ -207,13 +226,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     final screens = [
       HomeScreen(onViewAllHistory: () => _switchToTab(2)),
       const AnalyticsScreen(),
-      const HistoryScreen(),
+      HistoryScreen(showSearch: _historySearchActive),
     ];
 
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
+        if (_historySearchActive) {
+          _toggleHistorySearch();
+          return;
+        }
         final shouldExit = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -257,6 +280,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               child: Icon(Icons.two_wheeler, size: 26, color: Color(0xFF1B5E20)),
             ),
           ],
+          if (_currentIndex == 2)
+            IconButton(
+              icon: Icon(_historySearchActive ? Icons.close : Icons.search),
+              onPressed: _toggleHistorySearch,
+              tooltip: _historySearchActive ? 'Close search' : 'Search notes',
+            ),
         ],
       ),
       body: screens[_currentIndex],

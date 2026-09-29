@@ -3,11 +3,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:local_auth_android/local_auth_android.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../providers/bike_provider.dart';
+import '../providers/theme_provider.dart';
 import '../services/csv_service.dart';
 import '../utils/app_colors.dart';
 import '../widgets/tile_card.dart';
@@ -22,12 +25,14 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _fingerprintEnabled = false;
   bool _biometricAvailable = false;
+  String? _version;
   final _auth = LocalAuthentication();
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _loadVersion();
   }
 
   Future<void> _loadSettings() async {
@@ -39,12 +44,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) setState(() => _version = info.version);
+  }
+
   Future<void> _toggleFingerprint(bool value) async {
     if (value) {
       // Verify fingerprint before enabling
       final authenticated = await _auth.authenticate(
         localizedReason: ' ',
-        options: const AuthenticationOptions(biometricOnly: true),
+        options: const AuthenticationOptions(biometricOnly: false),
         authMessages: [
           const AndroidAuthMessages(
             biometricHint: '',
@@ -110,7 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await File(path).writeAsBytes(bytes);
       }
 
-      provider.markExported();
+      await provider.markExported();
       _showMessage('Backup saved (${provider.odometerEntries.length + provider.fuelEntries.length + provider.maintenanceEntries.length} entries)');
     } catch (e) {
       _showMessage('Export failed: $e', isError: true);
@@ -215,11 +225,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
+    final provider = context.watch<BikeProvider>();
+    final themeProvider = context.watch<ThemeProvider>();
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Appearance section
+          Text('Appearance', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.textTertiary)),
+          const SizedBox(height: 8),
+          TileCard(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.brightness_auto), label: Text('System')),
+                  ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode), label: Text('Light')),
+                  ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode), label: Text('Dark')),
+                ],
+                selected: {themeProvider.themeMode},
+                onSelectionChanged: (selected) => themeProvider.setThemeMode(selected.first),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
           // Security section
           Text('Security', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.textTertiary)),
           const SizedBox(height: 8),
@@ -271,7 +304,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: const Icon(Icons.file_download_outlined, color: Color(0xFFFF6D00), size: 24),
                   ),
                   title: const Text('Export Data', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text('Save a CSV backup to Downloads', style: TextStyle(fontSize: 12, color: c.textTertiary)),
+                  subtitle: Text(
+                    provider.lastBackupAt == null
+                        ? 'Save a CSV backup to Downloads'
+                        : 'Last backup: ${DateFormat('MMM dd, yyyy').format(provider.lastBackupAt!)}',
+                    style: TextStyle(fontSize: 12, color: c.textTertiary),
+                  ),
                   trailing: Icon(Icons.chevron_right, color: c.textHint),
                 ),
                 Divider(height: 1, color: c.divider),
@@ -311,7 +349,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: const Icon(Icons.info_outline, color: Color(0xFF2196F3), size: 24),
                   ),
                   title: const Text('RideLog', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: Text('Version 2.0.0', style: TextStyle(fontSize: 12, color: c.textTertiary)),
+                  subtitle: Text('Version ${_version ?? '...'}', style: TextStyle(fontSize: 12, color: c.textTertiary)),
                 ),
               ],
             ),

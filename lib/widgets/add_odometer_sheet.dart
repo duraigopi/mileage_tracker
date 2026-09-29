@@ -600,6 +600,10 @@ class _AddOdometerSheetState extends State<AddOdometerSheet> {
         final lastNote = _lastNoteAsOf(provider, _entryDateTime);
         if (lastNote != null) {
           _noteController.text = lastNote;
+          // The visible field is Autocomplete's own internal controller, not
+          // _noteController directly (that only syncs the other way), so it
+          // needs updating too or the note only shows up after saving.
+          _autocompleteController?.text = lastNote;
         }
       }
     });

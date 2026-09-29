@@ -21,6 +21,8 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
   final _costController = TextEditingController();
   final _odometerController = TextEditingController();
   final _noteController = TextEditingController();
+  final _reminderDaysController = TextEditingController();
+  final _reminderKmController = TextEditingController();
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
   late String _selectedCategory;
@@ -32,6 +34,7 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
 
   static const _categoryIcons = <String, IconData>{
     'General Service': Icons.build,
+    'Oil Change': Icons.oil_barrel,
     'Air Checkup': Icons.tire_repair,
     'Washing': Icons.water,
     'Other': Icons.more_horiz,
@@ -39,6 +42,7 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
 
   static const _categoryColors = <String, Color>{
     'General Service': Color(0xFF1976D2),
+    'Oil Change': Color(0xFF6D4C41),
     'Air Checkup': Color(0xFF00897B),
     'Washing': Color(0xFF0288D1),
     'Other': Color(0xFF757575),
@@ -51,6 +55,8 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
       _costController.text = widget.entry!.cost.toString();
       _odometerController.text = widget.entry!.odometerReading?.toString() ?? '';
       _noteController.text = widget.entry!.note ?? '';
+      _reminderDaysController.text = widget.entry!.reminderDays?.toString() ?? '';
+      _reminderKmController.text = widget.entry!.reminderKm?.toStringAsFixed(0) ?? '';
       _selectedDate = widget.entry!.date;
       _selectedTime = TimeOfDay.fromDateTime(widget.entry!.date);
       _selectedCategory = widget.entry!.category;
@@ -58,6 +64,11 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
       _selectedDate = DateTime.now();
       _selectedTime = TimeOfDay.now();
       _selectedCategory = MaintenanceCategory.general;
+
+      final currentOdometer = context.read<BikeProvider>().currentOdometer;
+      if (currentOdometer > 0) {
+        _odometerController.text = currentOdometer.toStringAsFixed(1);
+      }
     }
   }
 
@@ -66,6 +77,8 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
     _costController.dispose();
     _odometerController.dispose();
     _noteController.dispose();
+    _reminderDaysController.dispose();
+    _reminderKmController.dispose();
     super.dispose();
   }
 
@@ -251,6 +264,71 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
                 ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
+            ),
+            const SizedBox(height: 20),
+
+            // Reminder (optional)
+            Text(
+              'Remind me after (optional)',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.of(context).textPrimary),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _reminderDaysController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(
+                      labelText: 'Days',
+                      labelStyle: TextStyle(fontSize: 13, color: AppColors.of(context).textTertiary),
+                      suffixText: 'days',
+                      suffixStyle: TextStyle(fontSize: 13, color: AppColors.of(context).textTertiary),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: AppColors.of(context).border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: AppColors.of(context).border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Color(0xFF7B1FA2), width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _reminderKmController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
+                    decoration: InputDecoration(
+                      labelText: 'Distance',
+                      labelStyle: TextStyle(fontSize: 13, color: AppColors.of(context).textTertiary),
+                      suffixText: 'km',
+                      suffixStyle: TextStyle(fontSize: 13, color: AppColors.of(context).textTertiary),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: AppColors.of(context).border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide(color: AppColors.of(context).border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Color(0xFF7B1FA2), width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 14),
 
@@ -476,6 +554,8 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
     }
 
     final odometer = double.tryParse(_odometerController.text);
+    final reminderDays = int.tryParse(_reminderDaysController.text);
+    final reminderKm = double.tryParse(_reminderKmController.text);
 
     setState(() => _errorText = null);
 
@@ -493,6 +573,8 @@ class _AddMaintenanceSheetState extends State<AddMaintenanceSheet> {
       odometerReading: odometer,
       note: _noteController.text.isNotEmpty ? _noteController.text : null,
       createdAt: _isEditing ? widget.entry!.createdAt : null,
+      reminderDays: reminderDays,
+      reminderKm: reminderKm,
     );
 
     final provider = context.read<BikeProvider>();

@@ -27,7 +27,6 @@ class FuelEntry {
       'liters': liters,
       'price_per_liter': pricePerLiter,
       'total_cost': totalCost,
-      'full_tank': 1,
       'note': note,
       'created_at': createdAt.toIso8601String(),
     };
